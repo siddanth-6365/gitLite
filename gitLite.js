@@ -76,13 +76,33 @@ class GitLite {
     return crypto.createHash("sha1").update(content).digest("hex");
   }
 
-  // TODO: need to implement when here is `git add .` means add all files
+
+  async getAllFiles(dirPath, arrayOfFiles) {
+    const files = await fs.readdir(dirPath);
+
+    arrayOfFiles = arrayOfFiles || [];
+
+    for (const file of files) {
+      if ((await fs.stat(path.join(dirPath, file))).isDirectory()) {
+        arrayOfFiles = await this.getAllFiles(path.join(dirPath, file), arrayOfFiles);
+      } else {
+        arrayOfFiles.push(path.relative(this.rootPath, path.join(dirPath, file)));
+      }
+    }
+
+    return arrayOfFiles;
+  }
+
   async add(files) {
     console.log("Adding files to staging area...");
 
     await this.readIgnoreFile();
 
     let stagedEntries = await this.getStagedEntries();
+
+    if (files.includes(".")) {
+      files = await this.getAllFiles(this.rootPath);
+    }
 
     for (const filePath of files) {
       const fullPath = path.join(this.rootPath, filePath);
