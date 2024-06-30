@@ -76,7 +76,6 @@ class GitLite {
     return crypto.createHash("sha1").update(content).digest("hex");
   }
 
-
   async getAllFiles(dirPath, arrayOfFiles) {
     const files = await fs.readdir(dirPath);
 
@@ -84,9 +83,14 @@ class GitLite {
 
     for (const file of files) {
       if ((await fs.stat(path.join(dirPath, file))).isDirectory()) {
-        arrayOfFiles = await this.getAllFiles(path.join(dirPath, file), arrayOfFiles);
+        arrayOfFiles = await this.getAllFiles(
+          path.join(dirPath, file),
+          arrayOfFiles
+        );
       } else {
-        arrayOfFiles.push(path.relative(this.rootPath, path.join(dirPath, file)));
+        arrayOfFiles.push(
+          path.relative(this.rootPath, path.join(dirPath, file))
+        );
       }
     }
 
@@ -299,6 +303,64 @@ class GitLite {
     }
     console.log("\n");
   }
+
+  async push(branchName) {
+    console.log("Pushing to remote…");
+
+    // For simplicity, we’ll do a push by saving the current state to a remote repository folder in branchName folder
+    const remoteRepoPath = path.join(this.repoPath, "remote");
+    await fs.mkdir(remoteRepoPath, { recursive: true });
+
+    const remoteBranchPath = path.join(remoteRepoPath, branchName);
+    await fs.mkdir(remoteBranchPath, { recursive: true });
+
+    const headHash = await this.getHead();
+
+    if (!headHash) {
+      console.log("No commits to push.");
+      return;
+    }
+
+    // Save commit object to remote branch folder
+    const commitPath = path.join(this.objectFolderPath, headHash);
+    const commitContent = await fs.readFile(commitPath, "utf-8");
+    await fs.writeFile(path.join(remoteBranchPath, headHash), commitContent);
+
+    console.log(`Pushed commit ${headHash} to remote branch ${branchName}`);
+
+    console.log("Done pushing to remote");
+  }
+
+  async branch(newBranchName) {
+    console.log(`Creating new branch: ${newBranchName}`);
+    const headHash = await this.getHead();
+    if (!headHash) {
+      console.log("No commits to branch from.");
+      return;
+    }
+
+    const branchPath = path.join(this.repoPath, "branches");
+    await fs.mkdir(branchPath, { recursive: true });
+
+    const newBranchPath = path.join(branchPath, newBranchName);
+    await fs.writeFile(newBranchPath, headHash);
+
+    console.log(`Created branch ${newBranchName}`);
+  }
+
+  async checkout(branchName) {
+    console.log(`Switching to branch: ${branchName}`);
+    const branchPath = path.join(this.repoPath, "branches", branchName);
+    try {
+      const branchHead = await fs.readFile(branchPath, "utf-8");
+      await fs.writeFile(this.headPath, branchHead);
+      await fs.writeFile(this.branchPath, branchName);
+
+      console.log(`Switched to branch ${branchName}`);
+    } catch {
+      console.log(`Branch ${branchName} does not exist.`);
+    }
+  }
 }
 
 // Command line interface
@@ -330,6 +392,21 @@ program.command("status").action(async () => {
 program.command("diff <commitId>").action(async (commitId) => {
   const gitLite = new GitLite();
   await gitLite.diff(commitId);
+});
+
+program.command("push").action(async (branchName) => {
+  const gitLite = new GitLite();
+  await gitLite.push(branchName);
+});
+
+program.command("branch").action(async (branchName) => {
+  const gitLite = new GitLite();
+  await gitLite.branch(branchName);
+});
+
+program.command("checkout").action(async (branchName) => {
+  const gitLite = new GitLite();
+  await gitLite.checkout(branchName);
 });
 
 program.parse(process.argv);
